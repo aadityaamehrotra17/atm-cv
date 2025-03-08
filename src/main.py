@@ -4,6 +4,7 @@ import numpy as np
 from typing import Tuple, List
 import time
 
+# change push parameter
 class PushDetector:
     def __init__(self):
         # Initialize MediaPipe Pose
