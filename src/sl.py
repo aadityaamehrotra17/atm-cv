@@ -8,7 +8,7 @@ from threading import Thread
 import queue
 
 # Set page config
-st.set_page_config(layout="wide", page_title="Push Detection System")
+st.set_page_config(layout="wide", page_title="VaultVision™: Real-Time ATM Robbery Detection")
 
 class PushDetector:
     def __init__(self):
@@ -21,7 +21,7 @@ class PushDetector:
         self.mp_draw = mp.solutions.drawing_utils
         
         # Parameters for push detection
-        self.velocity_threshold = 10  # Adjust this value based on testing
+        self.velocity_threshold = 30  # Adjust this value based on testing
         self.previous_positions: List[Tuple[float, float]] = []
         self.push_cooldown = 1.0  # Seconds between push detections
         self.last_push_time = 0
@@ -143,8 +143,26 @@ def video_stream_thread(detector, frame_queue, status_queue):
 
 def main():
     # Header
-    st.title("Push Detection System")
-    st.markdown("### Monitor and detect pushing incidents")
+    st.markdown(
+        """
+        <div style="display: flex; align-items: center;">
+            <h1 style="margin: 0;">VaultVision™</h1>
+            <span style="
+                background-color: #ffcc00;
+                color: #000;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 4px 8px;
+                border-radius: 6px;
+                margin-left: 10px;
+                display: inline-block;
+            ">BETA</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    st.markdown("### Monitor and detect ATM robberies in real-time")
     
     # Setup layout with two columns
     col1, col2 = st.columns(2)
@@ -190,13 +208,13 @@ def main():
                 
                 # Update metrics
                 people_counter.metric("People Detected", status["people"])
-                velocity_display.metric("Movement Velocity", f"{status['velocity']:.2f}")
+                velocity_display.metric("Aggression Score", f"{status['velocity']:.2f}")
                 
                 # Show push alert
                 current_time = time.time()
                 if status["push_detected"]:
                     if not showing_alert:
-                        push_alert.error("⚠️ PUSH DETECTED! ⚠️")
+                        push_alert.error("⚠️ Possible Theft in Progress! ⚠️")
                         alert_start_time = current_time
                         showing_alert = True
                     
