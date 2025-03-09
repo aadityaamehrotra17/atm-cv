@@ -2,37 +2,42 @@ import streamlit as st
 import cv2
 import os
 import numpy as np
-import face_match  # Import our face matching module
+import time
+import face_match  # Your face matching module
+from streamlit_autorefresh import st_autorefresh
 
-# pip install streamlit opencv-python face-recognition numpy
+# pip install streamlit opencv-python face-recognition numpy streamlit-autorefresh
 # Run with: streamlit run sl.py
 
-# Page configuration
-st.set_page_config(layout="wide")
-st.title("Real-time Face Recognition")
+# --- Page Configuration ---
+st.set_page_config(page_title="VaultVision", layout="wide")
+st.title("VaultVision")
 
-# Initialize session state for controlling the loop and caching last recognized face
-if "run" not in st.session_state:
-    st.session_state.run = True
-if "last_recognized" not in st.session_state:
-    st.session_state.last_recognized = None
-if "missed_frames" not in st.session_state:
-    st.session_state.missed_frames = 0
+# --- Initialization ---
+if "mode" not in st.session_state:
+    st.session_state.mode = "landing"  # Modes: landing, face_recognition, pin_entry, transaction, logout
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+if "last_seen" not in st.session_state:
+    st.session_state.last_seen = time.time()
 
-# Parameters: how many consecutive frames without detection before clearing cached data
-MAX_MISSED_FRAMES = 15  # Adjust based on your needs
+# Open the webcam only once and store it in session state
+if "video_capture" not in st.session_state:
+    st.session_state.video_capture = cv2.VideoCapture(1)
 
-# Callback for the stop button
-def stop_run():
-    st.session_state.run = False
+# Load known faces once and store in session state
+if "known_face_encodings" not in st.session_state or "known_face_names" not in st.session_state:
+    encodings, names = face_match.load_known_faces("known_faces")
+    st.session_state.known_face_encodings = encodings
+    st.session_state.known_face_names = names
 
-# Sidebar stop button (created only once)
-st.sidebar.button("Stop", on_click=stop_run)
+# Hardcoded user PINs and account details
+user_pins = {
+    "nish": "1234",
+    "arnav": "5678",
+    "aadi": "9012"
+}
 
-# Load known faces using our module function
-known_face_encodings, known_face_names = face_match.load_known_faces("known_faces")
-
-# Hardcoded data corresponding to each recognized face.
 face_data_dict = {
     "nish": (
         "<strong>Nish's Account:</strong><br>"
@@ -57,65 +62,100 @@ face_data_dict = {
     )
 }
 
-# Create two columns: one for status updates and one for the camera feed
-col1, col2 = st.columns(2)
-with col1:
-    st.header("Status Updates")
-    status_placeholder = st.empty()
-with col2:
-    st.header("Camera Feed")
-    video_placeholder = st.empty()
+# --- Layout: Two Columns ---
+col_status, col_camera = st.columns(2)
 
-# Initialize webcam
-video_capture = cv2.VideoCapture(1)  # Adjust the camera index if needed
+# --- Auto-Refresh ---
+# Refresh every 200ms.
+st_autorefresh(interval=200, limit=10000, key="auto_refresh")
 
-while st.session_state.run:
-    ret, frame = video_capture.read()
-    if not ret:
-        st.error("Failed to access webcam")
-        break
-
-    # Process the current frame using the face_match module
-    face_locations, face_labels, authenticated, alert_flag = face_match.process_frame(
-        frame, known_face_encodings, known_face_names, match_tolerance=0.51
-    )
-
-    # Draw boxes and labels on the video frame
-    for (top, right, bottom, left), name in zip(face_locations, face_labels):
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(frame, name, (left, top - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
-
-    # Convert frame from BGR to RGB for Streamlit display
+# --- Update Camera Feed in Right Column ---
+ret, frame = st.session_state.video_capture.read()
+if ret:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    video_placeholder.image(rgb_frame, channels="RGB")
+    col_camera.image(rgb_frame, channels="RGB", use_container_width=True)
+else:
+    col_camera.error("Unable to capture video")
 
-    # Determine if we should update our cached recognized face data:
-    if authenticated:
-        recognized_name = face_labels[0]
-        st.session_state.last_recognized = recognized_name
-        st.session_state.missed_frames = 0  # Reset counter on detection
+# --- Workflow in Left Column ---
+if st.session_state.mode == "landing":
+    col_status.header("Welcome to VaultVision")
+    col_status.write("Click 'Start' to begin your transaction.")
+    if col_status.button("Start", key="start_button"):
+         st.session_state.mode = "face_recognition"
+
+elif st.session_state.mode == "face_recognition":
+    col_status.header("Face Recognition")
+    col_status.write("Position your face in front of the camera.")
+    ret, frame = st.session_state.video_capture.read()
+    if ret:
+        try:
+            face_locations, face_labels, authenticated, alert_flag = face_match.process_frame(
+                frame, st.session_state.known_face_encodings, st.session_state.known_face_names, match_tolerance=0.51
+            )
+        except Exception as e:
+            st.error(f"Face recognition error: {e}")
+            authenticated = False
+        if authenticated:
+            st.session_state.current_user = face_labels[0]
+            st.session_state.last_seen = time.time()
+            st.session_state.mode = "pin_entry"
+        else:
+            col_status.write("Face not recognized. Please try again.")
+            if col_status.button("Back to Landing", key="back_button"):
+                st.session_state.mode = "landing"
     else:
-        # If no face is authenticated, increase the missed frame counter
-        st.session_state.missed_frames += 1
-        # Clear the cached data only after MAX_MISSED_FRAMES are reached
-        if st.session_state.missed_frames >= MAX_MISSED_FRAMES:
-            st.session_state.last_recognized = None
+        col_status.write("Waiting for camera feed...")
 
-    # Display corresponding data based on the cached recognized face
-    if st.session_state.last_recognized:
-        data_text = face_data_dict.get(
-            st.session_state.last_recognized,
-            f"<strong>{st.session_state.last_recognized}</strong> has no associated data."
-        )
-        blur_style = "filter: blur(5px);" if alert_flag else ""
-        html_content = f"""
-        <div style="font-size: 20px; {blur_style} background-color: #f0f0f0; padding: 10px;">
-            {data_text}
-        </div>
-        """
-        status_placeholder.markdown(html_content, unsafe_allow_html=True)
-    else:
-        status_placeholder.markdown("<p>No recognized face detected yet.</p>", unsafe_allow_html=True)
+elif st.session_state.mode == "pin_entry":
+    col_status.header("PIN Entry")
+    col_status.write(f"Hello, {st.session_state.current_user.capitalize()}! Please enter your PIN:")
+    pin_input = col_status.text_input("PIN", type="password", key="pin_input")
+    if col_status.button("Submit PIN", key="submit_pin"):
+         if st.session_state.current_user in user_pins and pin_input == user_pins[st.session_state.current_user]:
+              st.session_state.mode = "transaction"
+         else:
+              col_status.error("Incorrect PIN. Please try again.")
 
-video_capture.release()
+elif st.session_state.mode == "transaction":
+    col_status.header("Account Details")
+    details = face_data_dict.get(st.session_state.current_user, "No details available.")
+    # Process current frame to get alert flag
+    ret, frame = st.session_state.video_capture.read()
+    current_alert_flag = False
+    if ret:
+        try:
+            _, face_labels_tx, authenticated_tx, alert_flag = face_match.process_frame(
+                 frame, st.session_state.known_face_encodings, st.session_state.known_face_names, match_tolerance=0.51
+            )
+            current_alert_flag = alert_flag
+        except Exception as e:
+            current_alert_flag = False
+    # Use alert flag to blur the details if necessary.
+    blur_style = "filter: blur(5px);" if current_alert_flag else ""
+    col_status.markdown(f"<div style='{blur_style}'>{details}</div>", unsafe_allow_html=True)
+    col_status.write("Keep your face in view. You will be logged out if no face is detected for 3 seconds.")
+    if ret:
+         try:
+             _, face_labels_tx, authenticated_tx, _ = face_match.process_frame(
+                 frame, st.session_state.known_face_encodings, st.session_state.known_face_names, match_tolerance=0.51
+             )
+         except Exception as e:
+             authenticated_tx = False
+         if authenticated_tx:
+              st.session_state.last_seen = time.time()
+         else:
+              if time.time() - st.session_state.last_seen > 3:
+                   st.session_state.mode = "logout"
+    if col_status.button("Finish Transaction", key="finish_button"):
+         st.session_state.mode = "logout"
+
+elif st.session_state.mode == "logout":
+    col_status.header("Thank You!")
+    col_status.write("Thank you for using VaultVision. Please take your receipt and your card.")
+    time.sleep(3)
+    st.session_state.mode = "landing"
+    st.session_state.current_user = None
+    st.session_state.last_seen = time.time()
+
+# Note: The auto-refresh component updates the UI every 200ms.
