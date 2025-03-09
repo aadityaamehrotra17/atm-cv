@@ -11,9 +11,16 @@ import face_match  # Import our face matching module
 st.set_page_config(layout="wide")
 st.title("Real-time Face Recognition")
 
-# Initialize session state for running the loop if it doesn't exist
+# Initialize session state for controlling the loop and caching last recognized face
 if "run" not in st.session_state:
     st.session_state.run = True
+if "last_recognized" not in st.session_state:
+    st.session_state.last_recognized = None
+if "missed_frames" not in st.session_state:
+    st.session_state.missed_frames = 0
+
+# Parameters: how many consecutive frames without detection before clearing cached data
+MAX_MISSED_FRAMES = 15  # Adjust based on your needs
 
 # Callback for the stop button
 def stop_run():
@@ -26,7 +33,6 @@ st.sidebar.button("Stop", on_click=stop_run)
 known_face_encodings, known_face_names = face_match.load_known_faces("known_faces")
 
 # Hardcoded data corresponding to each recognized face.
-# For example, you could have different account details or any other information.
 face_data_dict = {
     "nish": (
         "<strong>Nish's Account:</strong><br>"
@@ -84,13 +90,23 @@ while st.session_state.run:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     video_placeholder.image(rgb_frame, channels="RGB")
 
-    # Display corresponding data based on the recognized face
+    # Determine if we should update our cached recognized face data:
     if authenticated:
-        # Retrieve the name of the first (authenticated) face
         recognized_name = face_labels[0]
+        st.session_state.last_recognized = recognized_name
+        st.session_state.missed_frames = 0  # Reset counter on detection
+    else:
+        # If no face is authenticated, increase the missed frame counter
+        st.session_state.missed_frames += 1
+        # Clear the cached data only after MAX_MISSED_FRAMES are reached
+        if st.session_state.missed_frames >= MAX_MISSED_FRAMES:
+            st.session_state.last_recognized = None
+
+    # Display corresponding data based on the cached recognized face
+    if st.session_state.last_recognized:
         data_text = face_data_dict.get(
-            recognized_name,
-            f"<strong>{recognized_name}</strong> has no associated data."
+            st.session_state.last_recognized,
+            f"<strong>{st.session_state.last_recognized}</strong> has no associated data."
         )
         blur_style = "filter: blur(5px);" if alert_flag else ""
         html_content = f"""
