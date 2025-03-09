@@ -66,7 +66,6 @@ face_data_dict = {
 col_status, col_camera = st.columns(2)
 
 # --- Auto-Refresh ---
-# Refresh every 200ms.
 st_autorefresh(interval=200, limit=10000, key="auto_refresh")
 
 # --- Update Camera Feed in Right Column ---
@@ -120,7 +119,7 @@ elif st.session_state.mode == "pin_entry":
 elif st.session_state.mode == "transaction":
     col_status.header("Account Details")
     details = face_data_dict.get(st.session_state.current_user, "No details available.")
-    # Process current frame to get alert flag
+    # Process a fresh frame to get alert flag
     ret, frame = st.session_state.video_capture.read()
     current_alert_flag = False
     if ret:
@@ -131,7 +130,6 @@ elif st.session_state.mode == "transaction":
             current_alert_flag = alert_flag
         except Exception as e:
             current_alert_flag = False
-    # Use alert flag to blur the details if necessary.
     blur_style = "filter: blur(5px);" if current_alert_flag else ""
     col_status.markdown(f"<div style='{blur_style}'>{details}</div>", unsafe_allow_html=True)
     col_status.write("Keep your face in view. You will be logged out if no face is detected for 3 seconds.")
@@ -153,9 +151,14 @@ elif st.session_state.mode == "transaction":
 elif st.session_state.mode == "logout":
     col_status.header("Thank You!")
     col_status.write("Thank you for using VaultVision. Please take your receipt and your card.")
-    time.sleep(5)
-    st.session_state.mode = "landing"
-    st.session_state.current_user = None
-    st.session_state.last_seen = time.time()
+    # Set logout_start if not already set.
+    if "logout_start" not in st.session_state:
+         st.session_state.logout_start = time.time()
+    # If more than 3 seconds have passed, reset to landing.
+    if time.time() - st.session_state.logout_start > 3:
+         st.session_state.mode = "landing"
+         st.session_state.current_user = None
+         st.session_state.last_seen = time.time()
+         del st.session_state.logout_start
 
-# Note: The auto-refresh component updates the UI every 200ms.
+# The auto-refresh component updates the UI every 200ms, so after 3 seconds in logout mode the landing page will appear.
