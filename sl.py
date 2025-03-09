@@ -153,7 +153,7 @@ elif st.session_state.mode == "transaction":
 elif st.session_state.mode == "logout":
     col_status.header("Thank You!")
     col_status.write("Thank you for using VaultVision. Please take your receipt and your card.")
-    time.sleep(3)
+    time.sleep(5)
     st.session_state.mode = "landing"
     st.session_state.current_user = None
     st.session_state.last_seen = time.time()
